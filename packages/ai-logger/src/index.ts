@@ -1,10 +1,12 @@
-import { RequestLogger } from './request-logger';
-import { getWinstonLogger, persistLogs, persistError } from './winston-logger';
-import type { LogEntry, LoggerOptions, RequestContext } from './types';
+// Server-side exports
+export { RequestLogger } from './request-logger';
+export { getWinstonLogger, persistLogs, persistError } from './winston-logger';
+export { loggerMiddleware, withLogger } from './middleware';
+export type { LogEntry, LoggerOptions, RequestContext } from './types';
 
-// Export main types and classes
-export type { LogEntry, LoggerOptions, RequestContext };
-export { RequestLogger, getWinstonLogger, persistLogs, persistError };
+// Client-side exports
+export { LogProvider, useLogger } from './client/context';
+export { LogFrame, withLogging, useLogFrame } from './client/log-frame';
 
 // Re-export commonly used functions for convenience
 export const {

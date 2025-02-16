@@ -1,14 +1,16 @@
 # @standardbeagle/ai-logger
 
-A request-scoped logging system for Next.js applications with Winston integration. Logs are collected during request processing and only persisted when errors occur.
+A full-stack logging system for Next.js applications with both server-side and client-side logging capabilities. Logs are collected during request/interaction processing and only persisted when errors occur.
 
 ## Features
 
-- Request-scoped logging using AsyncLocalStorage
-- Integration with Winston for persistent logging
+- Request-scoped logging using AsyncLocalStorage on the server
+- Client-side logging with React context and error boundaries
+- Nested logging frames for tracking component interactions
+- Automatic log persistence on errors
+- Integration with Winston for log storage
 - TypeScript support
-- Efficient memory usage - logs are only persisted on errors
-- Next.js App Router compatible
+- Memory efficient - logs are only persisted on errors
 
 ## Installation
 
@@ -16,53 +18,33 @@ A request-scoped logging system for Next.js applications with Winston integratio
 pnpm add @standardbeagle/ai-logger
 ```
 
-## Usage
+## Server-Side Setup
 
-### Basic Setup
+### Middleware Configuration
 
 ```typescript
-import { RequestLogger, persistLogs } from '@standardbeagle/ai-logger';
+// middleware.ts
+import { withLogger } from '@standardbeagle/ai-logger';
 
-// In your Next.js middleware.ts
-import { NextResponse } from 'next/server';
-
-export async function middleware(request: NextRequest) {
-  const requestId = crypto.randomUUID();
-
-  try {
-    return await RequestLogger.run({ requestId }, async () => {
-      const response = await NextResponse.next();
-      
-      if (!response.ok) {
-        // Only persist logs if there's an error
-        const logs = RequestLogger.getRequestLogs();
-        persistLogs(logs);
-      }
-      
-      return response;
-    });
-  } catch (error) {
-    const logs = RequestLogger.getRequestLogs();
-    persistLogs(logs);
-    throw error;
-  }
-}
+export const { middleware } = withLogger({
+  // Optional: Configure path matching
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)']
+});
 ```
 
-### Logging Within Request Context
+### Server Component/API Route Usage
 
 ```typescript
-import { info, error, debug, warn } from '@standardbeagle/ai-logger';
+import { RequestLogger } from '@standardbeagle/ai-logger';
 
-// In your route handlers or components
 export async function GET() {
-  info('Processing request', { endpoint: '/api/data' });
+  RequestLogger.info('Processing request', { endpoint: '/api/data' });
   
   try {
     // Your logic here
-    debug('Request processed successfully');
+    RequestLogger.debug('Request processed successfully');
   } catch (err) {
-    error('Failed to process request', { 
+    RequestLogger.error('Failed to process request', { 
       error: err.message,
       stack: err.stack
     });
@@ -71,39 +53,105 @@ export async function GET() {
 }
 ```
 
-### Winston Configuration
+## Client-Side Setup
 
-```typescript
-import { getWinstonLogger } from '@standardbeagle/ai-logger';
+### Provider Setup
 
-const logger = getWinstonLogger({
-  logPath: 'logs/error.log',
-  logLevel: 'info'
-});
+```tsx
+// app/layout.tsx
+import { LogProvider } from '@standardbeagle/ai-logger';
 
-// Custom Winston configuration
-logger.add(new winston.transports.Console({
-  format: winston.format.simple()
-}));
+export default function RootLayout({
+  children
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html>
+      <body>
+        <LogProvider>
+          {children}
+        </LogProvider>
+      </body>
+    </html>
+  );
+}
 ```
+
+### Component Usage
+
+```tsx
+import { useLogger, LogFrame, useLogFrame } from '@standardbeagle/ai-logger';
+
+// Using the hook directly
+function MyComponent() {
+  const logger = useLogger();
+  
+  const handleClick = () => {
+    logger.info('Button clicked', { componentId: 'my-button' });
+    // ... handle click
+  };
+
+  return <button onClick={handleClick}>Click Me</button>;
+}
+
+// Using LogFrame for nested logging
+function ComplexComponent() {
+  const frameLogger = useLogFrame();
+  
+  const handleSubmit = async () => {
+    frameLogger.info('Form submission started');
+    try {
+      await submitForm();
+      frameLogger.info('Form submitted successfully');
+    } catch (err) {
+      frameLogger.error('Form submission failed', { error: err });
+      throw err;
+    }
+  };
+
+  return (
+    <LogFrame name="form-submission">
+      <form onSubmit={handleSubmit}>
+        {/* form fields */}
+      </form>
+    </LogFrame>
+  );
+}
+
+// Using HOC pattern
+const LoggedComponent = withLogging(MyComponent, {
+  name: 'MyComponent',
+  metadata: { componentType: 'button' }
+});
+```
+
+## How It Works
+
+1. Server-side requests are wrapped in a logging context using middleware
+2. Client-side interactions are wrapped in LogFrames
+3. Logs are stored in memory during normal operation
+4. On errors:
+   - Server-side: Logs are persisted via Winston
+   - Client-side: Logs are automatically uploaded to the server
+5. Nested frames provide context for complex interactions
 
 ## API Reference
 
-### RequestLogger
+### Server-Side
 
-- `run(options: LoggerOptions, fn: () => Promise<T>): Promise<T>`
-- `info(message: string, metadata?: Record<string, unknown>): void`
-- `warn(message: string, metadata?: Record<string, unknown>): void`
-- `error(message: string, metadata?: Record<string, unknown>): void`
-- `debug(message: string, metadata?: Record<string, unknown>): void`
-- `getRequestLogs(): LogEntry[]`
-- `clearContext(): void`
+- `RequestLogger.info/warn/error/debug(message, metadata?)`
+- `withLogger(config?)` - Middleware configuration
+- `persistLogs(entries)` - Manual log persistence
+- `getWinstonLogger(options?)` - Winston logger configuration
 
-### Winston Integration
+### Client-Side
 
-- `getWinstonLogger(options?: WinstonLoggerOptions)`
-- `persistLogs(entries: LogEntry[]): void`
-- `persistError(error: Error, metadata?: Record<string, unknown>): void`
+- `LogProvider` - React context provider
+- `useLogger()` - Hook for basic logging
+- `LogFrame` - Component for nested logging contexts
+- `useLogFrame()` - Hook for frame-specific logging
+- `withLogging(Component, options)` - HOC for component logging
 
 ## Types
 
@@ -121,10 +169,10 @@ interface LoggerOptions {
   logLevel?: LogEntry['level'];
 }
 
-interface WinstonLoggerOptions {
-  logPath?: string;
-  logLevel?: string;
-  silent?: boolean;
+interface LogFrameProps {
+  name: string;
+  metadata?: Record<string, unknown>;
+  children: React.ReactNode;
 }
 ```
 

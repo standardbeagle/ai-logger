@@ -11,11 +11,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src/**/*.ts"
   },
-  "keywords": [
-    "logging",
-    "winston",
-    "next.js"
-  ],
+  "keywords": ["logging", "winston", "next.js"],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -23,13 +19,15 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0",
     "@typescript-eslint/eslint-plugin": "^6.19.0",
     "@typescript-eslint/parser": "^6.19.0",
-    "eslint": "^8.56.0",
-    "typescript": "^5.3.3",
-    "vitest": "^1.6.1"
+    "eslint": "^8.56.0"
   },
   "peerDependencies": {
-    "next": ">=14.0.0"
+    "next": ">=14.0.0",
+    "react": ">=18.0.0"
   }
 }
