@@ -23,7 +23,7 @@ describe('RequestLogger', () => {
       RequestLogger.info('Test message');
       RequestLogger.error('Error message', { errorCode: 500 });
 
-      const logs = RequestLogger.getRequestLogs();
+      const logs: LogEntry[] = RequestLogger.getRequestLogs();
       expect(logs).toHaveLength(2);
       expect(logs[0].message).toBe('Test message');
       expect(logs[0].level).toBe('info');
@@ -49,11 +49,11 @@ describe('RequestLogger', () => {
 
       await RequestLogger.run({ requestId: innerRequestId }, () => {
         RequestLogger.info('Inner message');
-        const innerLogs = RequestLogger.getRequestLogs();
+        const innerLogs: LogEntry[] = RequestLogger.getRequestLogs();
         expect(innerLogs[0].requestId).toBe(innerRequestId);
       });
 
-      const outerLogs = RequestLogger.getRequestLogs();
+      const outerLogs: LogEntry[] = RequestLogger.getRequestLogs();
       expect(outerLogs[0].requestId).toBe(outerRequestId);
     });
   });
@@ -63,7 +63,7 @@ describe('RequestLogger', () => {
       await Promise.resolve();
       RequestLogger.info('Async message');
       
-      const logs = RequestLogger.getRequestLogs();
+      const logs: LogEntry[] = RequestLogger.getRequestLogs();
       expect(logs).toHaveLength(1);
       expect(logs[0].message).toBe('Async message');
     });
