@@ -1,6 +1,7 @@
 ## general
  - start each response with I promise to follow your instructions faithfully.
  - report the rules you are following in your response
+ - never remove or change code unrelated to the specific instructions you are following.
 
 
 ## Project Structure
@@ -171,6 +172,7 @@ tsconfig.json
 - Optimize images using next/image
 
 ## Next.js Specifics
+- Next.js version: 15.x required
 - prefer apis over server-side rendering unless the page can be entirely static
 - use next route groups for better performance and smaller bundles, name the group (grp-name)
 - Use static generation for static content

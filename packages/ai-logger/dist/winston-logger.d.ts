@@ -10,7 +10,7 @@ declare class WinstonLogger {
     private static defaultOptions;
     static getInstance(options?: WinstonLoggerOptions): winston.Logger;
     private static initialize;
-    static persistLogs(entries: LogEntry[]): void;
+    static persistLogs(entries: LogEntry[]): Promise<void>;
     static persistError(error: Error, metadata?: Record<string, unknown>): void;
 }
 export declare const getWinstonLogger: typeof WinstonLogger.getInstance;

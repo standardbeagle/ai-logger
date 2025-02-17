@@ -1,7 +1,7 @@
 {
   "name": "@standardbeagle/ai-logger",
   "version": "1.0.0",
-  "description": "Request-scoped logging system with Winston integration",
+  "description": "Full-stack logging system for Next.js applications with request-scoped logging, client-side logging, and automatic error persistence. Features memory-efficient logging with Winston integration.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -10,15 +10,38 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src",
-    "lint:fix": "eslint src --fix"
+    "lint:fix": "eslint src --fix",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "auth-type": "legacy"
   },
   "keywords": [
     "logging",
     "winston",
-    "next.js"
+    "next.js",
+    "react",
+    "typescript",
+    "error-logging",
+    "request-logging",
+    "client-logging"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Standard Beagle",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/standardbeagle/ai-logger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/standardbeagle/ai-logger/issues"
+  },
+  "homepage": "https://github.com/standardbeagle/ai-logger#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "winston": "^3.11.0"
   },

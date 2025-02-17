@@ -1,4 +1,5 @@
 // Server-side exports
+import { RequestLogger } from './request-logger';
 export { RequestLogger } from './request-logger';
 export { getWinstonLogger, persistLogs, persistError } from './winston-logger';
 export { loggerMiddleware, withLogger } from './middleware';

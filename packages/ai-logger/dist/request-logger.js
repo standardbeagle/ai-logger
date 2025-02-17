@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RequestLogger = void 0;
 const async_hooks_1 = require("async_hooks");
+const winston_logger_1 = require("./winston-logger");
 class RequestLogger {
     static setDefaultLogLevel(level) {
         RequestLogger.defaultLogLevel = level;
@@ -52,12 +53,64 @@ class RequestLogger {
     }
     static async run(options, fn) {
         const context = RequestLogger.createContext(options);
-        return RequestLogger.storage.run(context, fn);
+        const parentContext = RequestLogger.getCurrentContext();
+        let result;
+        try {
+            // Create new context
+            result = await RequestLogger.storage.run(context, async () => {
+                try {
+                    // Log context creation if nested
+                    if (parentContext) {
+                        RequestLogger.debug('Created nested logging context', {
+                            parentRequestId: parentContext.requestId,
+                            childRequestId: context.requestId
+                        });
+                    }
+                    const fnResult = await Promise.resolve(fn());
+                    // If we get here, the function completed successfully
+                    // Merge logs into parent if nested
+                    if (parentContext) {
+                        parentContext.logs.push(...context.logs.map(log => ({
+                            ...log,
+                            metadata: {
+                                ...log.metadata,
+                                parentRequestId: parentContext.requestId
+                            }
+                        })));
+                    }
+                    return fnResult;
+                }
+                catch (error) {
+                    // Log the error
+                    RequestLogger.error('Error in logging context', {
+                        error: error instanceof Error ? error.message : String(error),
+                        stack: error instanceof Error ? error.stack : undefined
+                    });
+                    // Persist logs before throwing
+                    await (0, winston_logger_1.persistLogs)(context.logs);
+                    throw error;
+                }
+            });
+            return result;
+        }
+        catch (error) {
+            // Error was already handled and logs were persisted in inner catch
+            throw error;
+        }
     }
     static clearContext() {
         const context = RequestLogger.getCurrentContext();
         if (context) {
-            context.logs = [];
+            // Create empty context to clear the current one
+            const emptyContext = {
+                requestId: 'cleanup',
+                startTime: new Date(),
+                logs: []
+            };
+            // Run with empty context to clear the current one
+            RequestLogger.storage.run(emptyContext, () => {
+                context.logs = [];
+            });
         }
     }
 }
