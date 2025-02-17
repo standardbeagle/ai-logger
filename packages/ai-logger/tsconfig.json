@@ -10,9 +10,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "rootDir": "./src",
-    "jsx": "react",
+    "jsx": "react-jsx",
     "lib": ["ES2020", "DOM"],
-    "types": ["node", "react"]
+    "types": ["node", "react", "vitest/globals"],
+    "jsxImportSource": "react"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]

@@ -1,0 +1,242 @@
+
+## Project Structure
+next.js Project Quality Guidelines
+
+```
+/app/
+  /(grp-auth)/
+    /login/
+      page.tsx
+      loading.tsx
+      error.tsx
+    /register/
+      page.tsx
+    layout.tsx
+
+  /(grp-dashboard)/
+    /overview/
+      page.tsx
+    /analytics/
+       (.)[id]/         # Route interceptor for analytics detail
+      @modal/          # Parallel route for analytics modals
+      page.tsx
+    /settings/
+      not-found.tsx    # Custom 404 for settings
+      page.tsx
+    error.tsx          # Shared dashboard error boundary
+    layout.tsx
+
+  /(grp-marketing)/
+    /blog/
+      /[slug]/
+        page.tsx
+    /about/
+      page.tsx
+    layout.tsx
+
+/components/
+  /ui/
+    Button/
+      Button.tsx
+      Button.test.tsx
+      Button.stories.tsx
+  /features/
+    Analytics/
+      Chart/
+      DataGrid/
+    Auth/
+      LoginForm/
+      RegisterForm/
+
+/lib/
+  /api/
+    client.ts
+    endpoints.ts
+  /utils/
+    formatting.ts
+    validation.ts
+  /hooks/
+    useAuth.ts
+    useAnalytics.ts
+  /types/
+    index.d.ts
+    analytics.types.ts
+
+/content/
+  /blog/
+    getting-started.mdx
+  /docs/
+    api-reference.mdx
+  /marketing/
+    features.json
+
+/public/
+  /images/
+  /icons/
+  /fonts/
+
+/tests/
+  /e2e/
+    auth.spec.ts
+    dashboard.spec.ts
+  /integration/
+    api.test.ts
+  /utils/
+    test-helpers.ts
+
+/docs/
+  /architecture/
+    overview.md
+    decisions.md
+  /development/
+    setup.md
+    workflow.md
+  /deployment/
+    staging.md
+    production.md
+
+/scripts/
+  setup-dev.sh
+  generate-types.ts
+  seed-data.ts
+
+.env.example
+.env.local
+.env.test
+.gitignore
+next.config.js
+package.json
+README.md
+tsconfig.json
+
+
+## Core Principles
+
+### SOLID plus Design
+1. **Single Responsibility**: Components/functions should have one clear purpose
+2. **Open/Closed**: Extend via composition not modification
+3. **Liskov Substitution**: Child components should be substitutable
+4. **Interface Segregation**: Keep props/interfaces focused
+5. **Dependency Inversion**: Depend on abstractions, not concretions
+6. **Composition Over Inheritance**: Prefer composition over inheritance
+7. **Separation of Concerns**: Separate concerns into focused units, including cross-cutting concerns
+8. **Side-effect Management**: Prefer functions which are either side-effect free or side effect rich.
+9. **Exception Safety**: Ensure functions are either side-effect free or side effect rich, and always exception neutral or safe
+10. **least surprise**: Avoid surprising behavior, like returning null instead of an empty array, avoid apis that force callers to write unnecessary checks
+11. **cross cutting concerns**: Avoid cross cutting concern management that requires duplicate code spread across the codebase
+12. **testability**: don't write private functions, use private properties to hide implementation details, every function should be testable, with the least amount of state setup.
+
+### Editing Guidelines
+- Use a consistent naming convention for files and folders
+- Use meaningful names for variables, functions, and components
+- Comment why and how, not what
+- Comment with links to relevant documentation
+- Implement best practices to cause the least amount of boilerplate, lean in heavily to middleware, context, hooks to handle cross cutting concerns
+- lint code whenever possible
+- build and test before completing a task
+
+### Code Organization
+- File Size: ≤200 lines
+- Function Length: 5-30 lines
+- Nesting: ≤3 levels deep
+- Component Complexity: Split complex UI into subcomponents
+
+### Error Handling
+- Use Read/Gate-Calculate-Alter pattern
+- Implement exception safety and neutrality guarantees
+- Never swallow errors silently
+- Always use error boundaries in React
+- Rely on the system level error handler for unhandled errors
+- use a logging middleware that logs process flows into memory and logs to a file when an error occurs for ai analysis and debugging
+- add an api endpoint that returns the error logs for debugging and write the link to the console
+- add un-logged function context to the error object
+
+### Testing
+- Use vitest for unit and integration tests
+- Use Storybook for component testing
+- Use Playwright for end-to-end testing
+- Use GitHub Actions for CI/CD
+- always run tests before committing
+- default to test execution that exits after running the tests, add a --watch flag to run tests in watch mode
+
+### Performance
+- Use dynamic imports for heavy components
+- use next route groups for better performance
+- Use static generation for static content
+- Use client-side fetching using rect-query for dynamic data
+- Optimize images using next/image
+
+## Next.js Specifics
+- prefer apis over server-side rendering unless the page can be entirely static
+- use next route groups for better performance and smaller bundles, name the group (grp-name)
+- Use static generation for static content
+- Use client-side fetching using rect-query for dynamic data
+- Cache aggressively using next-cache-api
+- Optimize images using next/image
+- Use client/server component boundaries intentionally
+
+## React Specifics
+- Use React hooks for state and side effects
+- write custom hooks for reusable logic
+- Use React Context for global state
+- Use React Suspense for data fetching
+- Use React Error Boundaries for error handling
+- Use React Portals for modals, popups, tooltips, toasts, etc.
+- Use React Fragments for grouping elements
+- use modern html elements like dialogs instead of custom components
+- use react-query for data fetching
+- use next Link for client-side navigation and ui actions
+- use html form elements and routing for data entry instead of using onclick handlers
+- use built in html validation and disable states for form elements
+
+
+### Recommended Setup
+```bash
+npx create-next-app@latest --typescript --tailwind --app --eslint --turbopack --use-pnpm --yes
+```
+
+### Configuration
+```js
+// next.config.js
+module.exports = {
+  reactStrictMode: true,
+  experimental: {
+    appDir: true,
+  },
+  images: {
+    domains: ['cdn.example.com'],
+  }
+};
+```
+
+
+## Code Quality
+```typescript
+// Bad - Mixed concerns
+function UserProfile() {
+  const [user, setUser] = useState(null);
+  
+  useEffect(() => {
+    fetchUser().then(setUser);
+  }, []);
+
+  return <div>{user?.name}</div>;
+}
+
+// Good - Separated concerns
+function UserProfile({ user }: { user: User }) {
+  return <div>{user.name}</div>;
+}
+
+// Data loading in parent
+async function ProfilePage() {
+  const user = await fetchUser();
+  return <UserProfile user={user} />;
+}
+```
+
+## Maintenance
+- Atomic commits focused on single purpose
+- Detailed code comments for non-obvious logic
+- Automated formatting with Prettier
+- Strict linting with ESLint

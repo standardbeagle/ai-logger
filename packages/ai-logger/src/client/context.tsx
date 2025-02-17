@@ -1,71 +1,104 @@
-import React, { createContext, useContext, useCallback } from 'react';
-import type { LogEntry, LoggerOptions } from '../types';
+import React, { createContext, useContext, useCallback, useRef } from 'react';
+import type { LogEntry } from '../types';
 import { uploadLogs } from './api';
 
-interface LogContextType {
-  logs: LogEntry[];
+interface LoggerContextType {
   addLog: (entry: Omit<LogEntry, 'timestamp' | 'requestId'>) => void;
-  getLogs: () => LogEntry[];
-  clearLogs: () => void;
   getRequestId: () => string;
 }
 
-const LogContext = createContext<LogContextType | null>(null);
+const LoggerContext = createContext<LoggerContextType | null>(null);
 
 interface LogProviderProps {
   children: React.ReactNode;
   requestId?: string;
   onError?: (error: Error, logs: LogEntry[]) => void;
+  onLog?: (log: LogEntry) => void;
 }
+
+// Global store for logs
+const store = {
+  logs: [] as LogEntry[],
+  clear() {
+    this.logs = [];
+  },
+  addLog(log: LogEntry) {
+    this.logs.push(log);
+  },
+  getLogs() {
+    return [...this.logs];
+  }
+};
+
+// Track logs per request ID
+const requestLogs = new Map<string, LogEntry[]>();
 
 export function LogProvider({ 
   children, 
   requestId = crypto.randomUUID(),
-  onError 
+  onError,
+  onLog 
 }: LogProviderProps) {
-  const [logs, setLogs] = React.useState<LogEntry[]>([]);
-
+  // Initialize request logs storage
+  const logsRef = useRef<LogEntry[]>([]);
+  
+  React.useLayoutEffect(() => {
+    // Create new log array for this request
+    requestLogs.set(requestId, logsRef.current);
+    return () => {
+      requestLogs.delete(requestId);
+    };
+  }, [requestId]);
+  
   const addLog = useCallback((entry: Omit<LogEntry, 'timestamp' | 'requestId'>) => {
-    const logEntry: LogEntry = {
+    const newLog = {
       ...entry,
       timestamp: new Date(),
       requestId
     };
-    setLogs(prev => [...prev, logEntry]);
-  }, [requestId]);
 
-  const getLogs = useCallback(() => logs, [logs]);
-  
-  const clearLogs = useCallback(() => {
-    setLogs([]);
-  }, []);
+    // Add to request logs immediately
+    logsRef.current.push(newLog);
+
+    // Handle logging output
+    if (onLog) {
+      onLog(newLog);
+    } else {
+      store.addLog(newLog);
+    }
+  }, [requestId, onLog]);
 
   const getRequestId = useCallback(() => requestId, [requestId]);
 
-  const handleError = useCallback(async (error: Error) => {
-    // Upload logs to server
-    await uploadLogs(logs);
-    
-    // Call custom error handler if provided
-    if (onError) {
-      onError(error, logs);
+  const handleError = useCallback((error: Error) => {
+    try {
+      // Get current logs synchronously
+      const currentLogs = logsRef.current;
+
+      // Upload logs (no await since this is synchronous error handling)
+      void uploadLogs(currentLogs);
+      
+      // Notify error handler
+      if (onError) {
+        onError(error, currentLogs);
+      }
+    } catch (uploadError) {
+      console.error('Failed to upload logs:', uploadError);
     }
-  }, [logs, onError]);
+    throw error;
+  }, [onError]);
 
   const value = React.useMemo(() => ({
-    logs,
     addLog,
-    getLogs,
-    clearLogs,
     getRequestId
-  }), [logs, addLog, getLogs, clearLogs, getRequestId]);
+  }), [addLog, getRequestId]);
 
   return (
-    <LogContext.Provider value={value}>
+    <LoggerContext.Provider value={value}>
       <ErrorBoundary onError={handleError}>
         {children}
       </ErrorBoundary>
-    </LogContext.Provider>
+    </LoggerContext.Provider>
   );
 }
 
@@ -90,29 +123,41 @@ class ErrorBoundary extends React.Component<
 
   render() {
     if (this.state.hasError) {
-      return null; // Let the parent error boundary handle the display
+      return null;
     }
     return this.props.children;
   }
 }
 
 export function useLogger() {
-  const context = useContext(LogContext);
+  const context = useContext(LoggerContext);
   if (!context) {
     throw new Error('useLogger must be used within a LogProvider');
   }
-
   const { addLog, getRequestId } = context;
 
+  const createLogMethod = useCallback(
+    (level: LogEntry['level']) =>
+      (message: string, metadata?: Record<string, unknown>) => {
+        addLog({ level, message, metadata });
+      },
+    [addLog]
+  );
+
   return {
-    info: (message: string, metadata?: Record<string, unknown>) =>
-      addLog({ level: 'info', message, metadata }),
-    warn: (message: string, metadata?: Record<string, unknown>) =>
-      addLog({ level: 'warn', message, metadata }),
-    error: (message: string, metadata?: Record<string, unknown>) =>
-      addLog({ level: 'error', message, metadata }),
-    debug: (message: string, metadata?: Record<string, unknown>) =>
-      addLog({ level: 'debug', message, metadata }),
+    info: createLogMethod('info'),
+    warn: createLogMethod('warn'),
+    error: createLogMethod('error'),
+    debug: createLogMethod('debug'),
     getRequestId
   };
 }
+
+// Testing utilities
+export const __test__ = {
+  getLogs: () => store.getLogs(),
+  clearLogs: () => {
+    store.clear();
+    requestLogs.clear();
+  }
+};

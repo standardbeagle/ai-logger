@@ -1,13 +1,15 @@
-import React, { createContext, useContext, useCallback, useEffect } from 'react';
-import { useLogger } from './context';
+import React, { createContext, useContext, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
+import { flushSync } from 'react-dom';
 import type { LogEntry } from '../types';
+import { useLogger } from './context';
 
-interface LogFrameContextType {
+interface FrameContextType {
   frameId: string;
   parentFrameId?: string;
+  addLog: (entry: Omit<LogEntry, 'timestamp' | 'requestId' | 'metadata'>) => void;
 }
 
-const LogFrameContext = createContext<LogFrameContextType | null>(null);
+const FrameContext = createContext<FrameContextType | null>(null);
 
 interface LogFrameProps {
   children: React.ReactNode;
@@ -15,43 +17,103 @@ interface LogFrameProps {
   metadata?: Record<string, unknown>;
 }
 
-export function LogFrame({ children, name, metadata }: LogFrameProps) {
+// Frame tracking
+const frameCounter = {
+  count: 0,
+  reset() { this.count = 0; },
+  next() { return `frame-${this.count++}`; }
+};
+
+export function LogFrame({ children, name, metadata = {} }: LogFrameProps) {
   const logger = useLogger();
-  const parentFrame = useContext(LogFrameContext);
-  const frameId = React.useMemo(() => crypto.randomUUID(), []);
+  const parentFrame = useContext(FrameContext);
+  
+  // Create frame ID synchronously
+  const frameRef = useRef<string>();
+  if (!frameRef.current) {
+    frameRef.current = frameCounter.next();
+  }
+  const frameId = frameRef.current;
 
-  // Log frame entry when mounted
-  useEffect(() => {
-    logger.debug(`Enter frame: ${name}`, {
-      frameId,
-      parentFrameId: parentFrame?.frameId,
-      frameName: name,
-      ...metadata
-    });
+  // Store metadata ref to prevent updates
+  const metadataRef = useRef(metadata);
+  metadataRef.current = metadata;
 
-    return () => {
-      logger.debug(`Exit frame: ${name}`, {
+  // Track frame hierarchy
+  const frameContext = React.useMemo(() => ({
+    frameId,
+    parentFrameId: parentFrame?.frameId,
+    // Log with frame context
+    addLog: (entry: Omit<LogEntry, 'timestamp' | 'requestId' | 'metadata'>) => {
+      logger.info(entry.message, {
+        ...entry,
         frameId,
         parentFrameId: parentFrame?.frameId,
-        frameName: name,
-        ...metadata
+        ...metadataRef.current
       });
-    };
-  }, [frameId, name, metadata, logger, parentFrame?.frameId]);
+    }
+  }), [frameId, parentFrame?.frameId, logger]);
 
-  const frameContext = React.useMemo(
-    () => ({
-      frameId,
-      parentFrameId: parentFrame?.frameId
-    }),
-    [frameId, parentFrame?.frameId]
-  );
+  // Track mounting state
+  const mountedRef = useRef(false);
+
+  // Log frame lifecycle
+  useLayoutEffect(() => {
+    // If parent frame exists, delay logging until next tick to ensure parent logs first
+    if (parentFrame) {
+      Promise.resolve().then(() => {
+        frameContext.addLog({
+          level: 'info',
+          message: `Enter frame: ${name}`
+        });
+        mountedRef.current = true;
+      });
+    } else {
+      // No parent frame, log immediately
+      frameContext.addLog({
+        level: 'info',
+        message: `Enter frame: ${name}`
+      });
+      mountedRef.current = true;
+    }
+
+    return () => {
+      if (mountedRef.current) {
+        frameContext.addLog({
+          level: 'info',
+          message: `Exit frame: ${name}`
+        });
+      }
+    };
+  }, [frameContext, name, parentFrame]);
 
   return (
-    <LogFrameContext.Provider value={frameContext}>
+    <FrameContext.Provider value={frameContext}>
       {children}
-    </LogFrameContext.Provider>
+    </FrameContext.Provider>
   );
+}
+
+export function useLogFrame() {
+  const frame = useContext(FrameContext);
+  if (!frame) {
+    throw new Error('useLogFrame must be used within a LogFrame');
+  }
+
+  const { frameId, parentFrameId, addLog } = frame;
+
+  return {
+    frameId,
+    parentFrameId,
+    info: (message: string, metadata?: Record<string, unknown>) => 
+      addLog({ level: 'info', message, ...metadata }),
+    warn: (message: string, metadata?: Record<string, unknown>) => 
+      addLog({ level: 'warn', message, ...metadata }),
+    error: (message: string, metadata?: Record<string, unknown>) => 
+      addLog({ level: 'error', message, ...metadata }),
+    debug: (message: string, metadata?: Record<string, unknown>) => 
+      addLog({ level: 'debug', message, ...metadata })
+  };
 }
 
 interface WithLoggingOptions {
@@ -63,7 +125,7 @@ export function withLogging<P extends object>(
   Component: React.ComponentType<P>,
   options: WithLoggingOptions
 ) {
-  return function WrappedWithLogging(props: P) {
+  return function WrappedComponent(props: P) {
     return (
       <LogFrame name={options.name} metadata={options.metadata}>
         <Component {...props} />
@@ -72,35 +134,7 @@ export function withLogging<P extends object>(
   };
 }
 
-export function useLogFrame() {
-  const frame = useContext(LogFrameContext);
-  const logger = useLogger();
-
-  if (!frame) {
-    throw new Error('useLogFrame must be used within a LogFrame');
-  }
-
-  const log = useCallback(
-    (level: LogEntry['level'], message: string, metadata?: Record<string, unknown>) => {
-      logger[level](message, {
-        frameId: frame.frameId,
-        parentFrameId: frame.parentFrameId,
-        ...metadata
-      });
-    },
-    [logger, frame]
-  );
-
-  return {
-    frameId: frame.frameId,
-    parentFrameId: frame.parentFrameId,
-    info: (message: string, metadata?: Record<string, unknown>) =>
-      log('info', message, metadata),
-    warn: (message: string, metadata?: Record<string, unknown>) =>
-      log('warn', message, metadata),
-    error: (message: string, metadata?: Record<string, unknown>) =>
-      log('error', message, metadata),
-    debug: (message: string, metadata?: Record<string, unknown>) =>
-      log('debug', message, metadata)
-  };
-}
+// Testing utilities
+export const __test__ = {
+  resetFrameCounter: () => frameCounter.reset()
+};
