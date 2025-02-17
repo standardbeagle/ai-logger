@@ -70,28 +70,32 @@ describe('RequestLogger', () => {
   });
 
   test('should persist logs on error', async () => {
-    expect.assertions(2);
-    let capturedLogs: LogEntry[] = [];
+    expect.assertions(3);
 
     try {
       await RequestLogger.run({ requestId }, async () => {
         RequestLogger.info('Before error');
-        capturedLogs = [...RequestLogger.getRequestLogs()]; // Make a copy of the logs
         throw new Error('Test error');
       });
     } catch (error) {
-      // Pass the captured logs to persistLogs
-      winstonLogger.persistLogs(capturedLogs);
-
-      // Verify the logs were passed correctly
+      // Verify logs were persisted automatically
       expect(winstonLogger.persistLogs).toHaveBeenCalledTimes(1);
       expect(winstonLogger.persistLogs).toHaveBeenCalledWith([
         expect.objectContaining({
           level: 'info',
           message: 'Before error',
           requestId
+        }),
+        expect.objectContaining({
+          level: 'error',
+          message: 'Error in logging context',
+          requestId,
+          metadata: expect.objectContaining({
+            error: 'Test error'
+          })
         })
       ]);
+      expect(error).toBeInstanceOf(Error);
     }
   });
 });

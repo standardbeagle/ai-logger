@@ -30,9 +30,9 @@ declare global {
 
 // Add mock ResizeObserver
 global.ResizeObserver = class ResizeObserver {
-  observe() { console.log('[ResizeObserver] observe called'); }
-  unobserve() { console.log('[ResizeObserver] unobserve called'); }
-  disconnect() { console.log('[ResizeObserver] disconnect called'); }
+  observe(): void { console.log('[ResizeObserver] observe called'); }
+  unobserve(): void { console.log('[ResizeObserver] unobserve called'); }
+  disconnect(): void { console.log('[ResizeObserver] disconnect called'); }
 };
 
 console.log('[Test Setup] Test environment initialized');

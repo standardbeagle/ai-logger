@@ -1,5 +1,5 @@
 export interface LogEntry {
-  //timestamp: Date;
+  timestamp: Date;
   level: 'error' | 'warn' | 'info' | 'debug';
   message: string;
   metadata?: Record<string, unknown>;

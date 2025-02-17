@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useCallback, useRef, useEffect } from 'react';
 import type { LogEntry } from '../types';
 import { uploadLogs } from './api';
 
 interface LoggerContextType {
-  addLog: (entry: Omit<LogEntry, 'timestamp' | 'requestId'>) => void;
+  addLog: (entry: Omit<LogEntry, 'timestamp' | 'requestId'>) => Promise<void>;
   getRequestId: () => string;
 }
 
@@ -16,77 +16,100 @@ interface LogProviderProps {
   onLog?: (log: LogEntry) => void;
 }
 
-// Global store for logs
+// Global store for logs with async handling
 const store = {
   logs: [] as LogEntry[],
+  queue: Promise.resolve(),
   clear() {
     this.logs = [];
+    this.queue = Promise.resolve();
   },
-  addLog(log: LogEntry) {
-    this.logs.push(log);
+  async addLog(log: LogEntry): Promise<void> {
+    await (this.queue = this.queue.then(() => {
+      this.logs.push(log);
+      return Promise.resolve();
+    }));
   },
   getLogs() {
     return [...this.logs];
   }
 };
 
-// Track logs per request ID
-const requestLogs = new Map<string, LogEntry[]>();
-
-export function LogProvider({ 
-  children, 
+export function LogProvider({
+  children,
   requestId = crypto.randomUUID(),
   onError,
-  onLog 
-}: LogProviderProps) {
-  // Initialize request logs storage
+  onLog
+}: LogProviderProps): JSX.Element {
+  // Store logs in ref to prevent re-renders and maintain across error boundaries
   const logsRef = useRef<LogEntry[]>([]);
-  
-  React.useLayoutEffect(() => {
-    // Create new log array for this request
-    requestLogs.set(requestId, logsRef.current);
+  const processingError = useRef<boolean>(false);
+
+  useEffect(() => {
     return () => {
-      requestLogs.delete(requestId);
+      logsRef.current = [];
     };
-  }, [requestId]);
-  
-  const addLog = useCallback((entry: Omit<LogEntry, 'timestamp' | 'requestId'>) => {
+  }, []);
+
+  const addLog = useCallback(async (entry: Omit<LogEntry, 'timestamp' | 'requestId'>) => {
     const newLog = {
       ...entry,
       timestamp: new Date(),
       requestId
     };
 
-    // Add to request logs immediately
+    // Add to local logs immediately
     logsRef.current.push(newLog);
 
     // Handle logging output
     if (onLog) {
-      onLog(newLog);
+      await Promise.resolve().then(() => onLog(newLog));
     } else {
-      store.addLog(newLog);
+      await store.addLog(newLog);
     }
   }, [requestId, onLog]);
 
   const getRequestId = useCallback(() => requestId, [requestId]);
 
-  const handleError = useCallback((error: Error) => {
-    try {
-      // Get current logs synchronously
-      const currentLogs = logsRef.current;
+  const handleError = useCallback(async (error: Error) => {
+    // Prevent recursive error handling
+    if (processingError.current) {
+      throw error;
+    }
 
-      // Upload logs (no await since this is synchronous error handling)
-      void uploadLogs(currentLogs);
-      
+    processingError.current = true;
+    try {
+      // Get logs before doing anything that might fail
+      const currentLogs = [...logsRef.current];
+
+      // Add error log
+      await addLog({
+        level: 'error',
+        message: 'Error caught by error boundary',
+        metadata: {
+          error: error.message,
+          stack: error.stack
+        }
+      });
+
+      // Try to upload logs
+      try {
+        await uploadLogs(currentLogs);
+      } catch (uploadError) {
+        console.error('Failed to upload logs:', uploadError);
+      }
+
       // Notify error handler
       if (onError) {
-        onError(error, currentLogs);
+        await Promise.resolve().then(() => onError(error, currentLogs));
       }
-    } catch (uploadError) {
-      console.error('Failed to upload logs:', uploadError);
+    } finally {
+      processingError.current = false;
     }
+    
+    // Re-throw the original error
     throw error;
-  }, [onError]);
+  }, [addLog, onError]);
 
   const value = React.useMemo(() => ({
     addLog,
@@ -104,7 +127,7 @@ export function LogProvider({
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
-  onError: (error: Error) => void;
+  onError: (error: Error) => Promise<void>;
 }
 
 class ErrorBoundary extends React.Component<
@@ -113,15 +136,18 @@ class ErrorBoundary extends React.Component<
 > {
   state = { hasError: false };
 
-  static getDerivedStateFromError() {
+  static getDerivedStateFromError(): { hasError: boolean } {
     return { hasError: true };
   }
 
-  componentDidCatch(error: Error) {
-    this.props.onError(error);
+  componentDidCatch(error: Error): void {
+    // Handle the error asynchronously
+    void this.props.onError(error).catch(handlerError => {
+      console.error('Error in error boundary handler:', handlerError);
+    });
   }
 
-  render() {
+  render(): React.ReactNode {
     if (this.state.hasError) {
       return null;
     }
@@ -129,7 +155,15 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-export function useLogger() {
+interface Logger {
+  info: (message: string, metadata?: Record<string, unknown>) => Promise<void>;
+  warn: (message: string, metadata?: Record<string, unknown>) => Promise<void>;
+  error: (message: string, metadata?: Record<string, unknown>) => Promise<void>;
+  debug: (message: string, metadata?: Record<string, unknown>) => Promise<void>;
+  getRequestId: () => string;
+}
+
+export function useLogger(): Logger {
   const context = useContext(LoggerContext);
   if (!context) {
     throw new Error('useLogger must be used within a LogProvider');
@@ -138,19 +172,18 @@ export function useLogger() {
 
   const createLogMethod = useCallback(
     (level: LogEntry['level']) =>
-      (message: string, metadata?: Record<string, unknown>) => {
-        addLog({ level, message, metadata });
-      },
+      (message: string, metadata?: Record<string, unknown>) => 
+        addLog({ level, message, metadata }),
     [addLog]
   );
 
-  return {
+  return React.useMemo(() => ({
     info: createLogMethod('info'),
     warn: createLogMethod('warn'),
     error: createLogMethod('error'),
     debug: createLogMethod('debug'),
     getRequestId
-  };
+  }), [createLogMethod, getRequestId]);
 }
 
 // Testing utilities
@@ -158,6 +191,5 @@ export const __test__ = {
   getLogs: () => store.getLogs(),
   clearLogs: () => {
     store.clear();
-    requestLogs.clear();
   }
 };

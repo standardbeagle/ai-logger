@@ -50,7 +50,7 @@ describe('LogFrame', () => {
     expect(frames[0].parentFrameId).toBeUndefined();
     expect(frames[1].parentFrameId).toBe(frames[0].frameId);
 
-    unmount();
+    await unmount();
   });
 
   test('logs frame entry and exit', async () => {
@@ -64,7 +64,7 @@ describe('LogFrame', () => {
     
     // Check enter logs
     const logs = getLogs();
-    const enterLogs = logs.filter(log => 
+    const enterLogs = logs.filter((log: LogEntry) => 
       log.message.includes('Enter frame: test-frame')
     );
     expect(enterLogs).toHaveLength(1);
@@ -74,11 +74,11 @@ describe('LogFrame', () => {
     });
 
     // Unmount to trigger exit logs
-    unmount();
+    await unmount();
     await waitForStateUpdate();
     
     // Check exit logs
-    const exitLogs = getLogs().filter(log => 
+    const exitLogs = getLogs().filter((log: LogEntry) => 
       log.message.includes('Exit frame: test-frame')
     );
     expect(exitLogs).toHaveLength(1);
@@ -92,7 +92,7 @@ describe('LogFrame', () => {
     function TestComponent(): JSX.Element {
       const frameLogger = useLogFrame();
       React.useEffect(() => {
-        frameLogger.info('Component mounted');
+        void frameLogger.info('Component mounted');
       }, [frameLogger]);
       return <div>Test</div>;
     }
@@ -108,27 +108,37 @@ describe('LogFrame', () => {
     expect(container.textContent).toBe('Test');
     
     const logs = getLogs();
-    expect(logs.some(log => log.message === 'Component mounted')).toBe(true);
-    expect(logs.some(log => log.message === 'Enter frame: TestComponent')).toBe(true);
+    expect(logs.some((log: LogEntry) => log.message === 'Component mounted')).toBe(true);
+    expect(logs.some((log: LogEntry) => log.message === 'Enter frame: TestComponent')).toBe(true);
   });
 
   test('throws when useLogFrame used outside LogFrame', () => {
     function TestComponent(): JSX.Element {
-      useLogFrame();
+      // This should throw immediately during render
+      let threw = false;
+      try {
+        useLogFrame();
+      } catch (error: unknown) {
+        threw = true;
+        if (error instanceof Error) {
+          expect(error.name).toBe('LogFrameError');
+          expect(error.message).toBe('useLogFrame must be used within a LogFrame');
+        } else {
+          throw new Error('Expected error to be instance of Error');
+        }
+      }
+      expect(threw).toBe(true);
       return <div/>;
     }
 
-    expect(() => {
-      const { unmount } = renderWithLogger(<TestComponent />);
-      unmount();
-    }).toThrow('useLogFrame must be used within a LogFrame');
+    renderWithLogger(<TestComponent />);
   });
 
   test('handles nested logging calls', async () => {
     function TestComponent(): JSX.Element {
       const frameLogger = useLogFrame();
       React.useEffect(() => {
-        frameLogger.info('Test log');
+        void frameLogger.info('Test log');
       }, [frameLogger]);
       return <div/>;
     }
@@ -141,23 +151,24 @@ describe('LogFrame', () => {
       </LogFrame>
     );
 
-    await waitForStateUpdate();
+    await waitForStateUpdate(200); // Wait longer for nested logs
     const logs = getLogs();
     
     // Check enter log sequence
     const enterFrameLogs = logs
-      .filter(log => log.message.startsWith('Enter frame:'))
-      .map(log => log.message.replace('Enter frame: ', ''));
+      .filter((log: LogEntry) => log.message.startsWith('Enter frame:'))
+      .map((log: LogEntry) => log.message.split(': ')[1]);
 
+    // Parent should log before child due to log level adjustments
     expect(enterFrameLogs).toEqual(['outer', 'inner']);
 
     // Check frame hierarchy
-    const innerFrameLog = logs.find(log => log.message === 'Enter frame: inner');
+    const innerFrameLog = logs.find((log: LogEntry) => log.message === 'Enter frame: inner');
     expect(innerFrameLog?.metadata).toMatchObject({
       frameId: 'frame-1',
       parentFrameId: 'frame-0'
     });
 
-    unmount();
+    await unmount();
   });
 });
