@@ -1,6 +1,6 @@
 {
   "name": "@standardbeagle/ai-logger",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Full-stack logging system for Next.js applications with request-scoped logging, client-side logging, and automatic error persistence. Features memory-efficient logging with Winston integration.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
